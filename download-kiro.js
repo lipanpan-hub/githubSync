@@ -56,43 +56,86 @@ async function main() {
   
   try {
     console.log(`访问下载页面: ${DOWNLOAD_URL}`);
-    await page.goto(DOWNLOAD_URL, { waitUntil: 'networkidle' });
     
-    // 等待页面加载完成
-    await page.waitForTimeout(2000);
+    // 监听下载请求
+    const downloadUrls = {};
+    page.on('response', async (response) => {
+      const url = response.url();
+      // 捕获实际的下载文件 URL
+      if (url.includes('.exe') || url.includes('.deb') || url.includes('.AppImage')) {
+        console.log(`捕获到下载链接: ${url}`);
+        if (url.includes('.exe')) {
+          downloadUrls.windows = url;
+        } else if (url.includes('.deb')) {
+          downloadUrls.linux = url;
+        }
+      }
+    });
+    
+    await page.goto(DOWNLOAD_URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
     
     // 获取 Windows x64 下载链接
-    console.log('\n查找 Windows x64 下载链接...');
-    const windowsLink = await page.locator('text=Download for Windows (x64)').first();
-    const windowsHref = await windowsLink.evaluate(el => {
-      const link = el.closest('a');
-      return link ? link.href : null;
-    });
-    
-    if (windowsHref) {
-      console.log(`Windows x64 下载链接: ${windowsHref}`);
-      const windowsFilename = path.join(DOWNLOAD_DIR, 'kiro-windows-x64.exe');
-      console.log(`开始下载到: ${windowsFilename}`);
-      await downloadFile(windowsHref, windowsFilename);
-    } else {
-      console.log('未找到 Windows x64 下载链接');
+    console.log('\n尝试获取 Windows x64 下载链接...');
+    try {
+      const windowsButton = page.locator('text=Download for Windows (x64)').first();
+      await windowsButton.waitFor({ timeout: 5000 });
+      
+      // 点击按钮触发下载链接生成
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: 10000 }).catch(() => null),
+        windowsButton.click()
+      ]);
+      
+      if (download) {
+        const windowsUrl = download.url();
+        console.log(`Windows x64 下载链接: ${windowsUrl}`);
+        const windowsFilename = path.join(DOWNLOAD_DIR, 'kiro-windows-x64.exe');
+        console.log(`开始下载到: ${windowsFilename}`);
+        await downloadFile(windowsUrl, windowsFilename);
+      } else if (downloadUrls.windows) {
+        console.log(`Windows x64 下载链接: ${downloadUrls.windows}`);
+        const windowsFilename = path.join(DOWNLOAD_DIR, 'kiro-windows-x64.exe');
+        console.log(`开始下载到: ${windowsFilename}`);
+        await downloadFile(downloadUrls.windows, windowsFilename);
+      } else {
+        console.log('未能获取 Windows x64 下载链接');
+      }
+    } catch (error) {
+      console.log('获取 Windows 下载链接时出错:', error.message);
     }
     
-    // 获取 Linux Debian/Ubuntu 24+ 下载链接
-    console.log('\n查找 Linux (Debian/Ubuntu 24+) 下载链接...');
-    const linuxLink = await page.locator('text=Download for Linux (Debian/Ubuntu 24+)').first();
-    const linuxHref = await linuxLink.evaluate(el => {
-      const link = el.closest('a');
-      return link ? link.href : null;
-    });
+    // 重新加载页面以获取 Linux 下载链接
+    await page.goto(DOWNLOAD_URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
     
-    if (linuxHref) {
-      console.log(`Linux deb 下载链接: ${linuxHref}`);
-      const linuxFilename = path.join(DOWNLOAD_DIR, 'kiro-linux-debian-ubuntu.deb');
-      console.log(`开始下载到: ${linuxFilename}`);
-      await downloadFile(linuxHref, linuxFilename);
-    } else {
-      console.log('未找到 Linux deb 下载链接');
+    // 获取 Linux Debian/Ubuntu 24+ 下载链接
+    console.log('\n尝试获取 Linux (Debian/Ubuntu 24+) 下载链接...');
+    try {
+      const linuxButton = page.locator('text=Download for Linux (Debian/Ubuntu 24+)').first();
+      await linuxButton.waitFor({ timeout: 5000 });
+      
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: 10000 }).catch(() => null),
+        linuxButton.click()
+      ]);
+      
+      if (download) {
+        const linuxUrl = download.url();
+        console.log(`Linux deb 下载链接: ${linuxUrl}`);
+        const linuxFilename = path.join(DOWNLOAD_DIR, 'kiro-linux-debian-ubuntu.deb');
+        console.log(`开始下载到: ${linuxFilename}`);
+        await downloadFile(linuxUrl, linuxFilename);
+      } else if (downloadUrls.linux) {
+        console.log(`Linux deb 下载链接: ${downloadUrls.linux}`);
+        const linuxFilename = path.join(DOWNLOAD_DIR, 'kiro-linux-debian-ubuntu.deb');
+        console.log(`开始下载到: ${linuxFilename}`);
+        await downloadFile(downloadUrls.linux, linuxFilename);
+      } else {
+        console.log('未能获取 Linux deb 下载链接');
+      }
+    } catch (error) {
+      console.log('获取 Linux 下载链接时出错:', error.message);
     }
     
     console.log('\n所有下载任务完成！');
