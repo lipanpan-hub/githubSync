@@ -1,0 +1,90 @@
+name: Sync Antigravity Release
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每天 UTC 00:00 执行
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  sync-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest Antigravity version
+        id: get_version
+        shell: pwsh
+        run: |
+          # 使用 winget 获取最新版本信息
+          $output = winget show Google.Antigravity --accept-source-agreements
+          $versionLine = $output | Select-String -Pattern "Version:\s+(.+)"
+          $version = $versionLine.Matches.Groups[1].Value.Trim()
+          
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "Latest version: $version"
+
+      - name: Check if release exists
+        id: check_release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.get_version.outputs.version }}"
+          $releases = gh release list --json tagName --jq '.[].tagName'
+          
+          if ($releases -contains "v$version") {
+            echo "exists=true" >> $env:GITHUB_OUTPUT
+            echo "Release v$version already exists"
+          } else {
+            echo "exists=false" >> $env:GITHUB_OUTPUT
+            echo "Release v$version does not exist"
+          }
+
+      - name: Download Antigravity installer
+        if: steps.check_release.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.version }}"
+          
+          # 使用 winget 下载
+          winget download Google.Antigravity --version $version --download-directory ./downloads --accept-source-agreements --accept-package-agreements
+          
+          # 查找下载的文件
+          $installer = Get-ChildItem -Path ./downloads -Filter "*.exe" -Recurse | Select-Object -First 1
+          
+          if ($installer) {
+            echo "Downloaded: $($installer.FullName)"
+            # 重命名为标准名称
+            Copy-Item $installer.FullName -Destination "./Antigravity-$version-windows-x64.exe"
+          } else {
+            throw "Installer not found"
+          }
+
+      - name: Create GitHub Release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.version }}"
+          $installer = "Antigravity-$version-windows-x64.exe"
+          
+          gh release create "v$version" `
+            --title "Antigravity v$version" `
+            --notes "Google Antigravity v$version for Windows x64`n`n自动同步自官方发布" `
+            $installer
+
+      - name: Cleanup
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path ./downloads) {
+            Remove-Item -Path ./downloads -Recurse -Force
+          }
+          if (Test-Path ./Antigravity-*.exe) {
+            Remove-Item -Path ./Antigravity-*.exe -Force
+          }
