@@ -49,10 +49,16 @@ jobs:
       - name: 检查文件是否存在
         run: |
           ls -lh downloads/
-          if [ ! -f downloads/kiro-windows-x64.exe ] && [ ! -f downloads/kiro-linux-debian-ubuntu.deb ]; then
+          # 检查是否有 .exe 或 .deb 文件
+          exe_count=$(find downloads/ -name "*.exe" | wc -l)
+          deb_count=$(find downloads/ -name "*.deb" | wc -l)
+          
+          if [ "$exe_count" -eq 0 ] && [ "$deb_count" -eq 0 ]; then
             echo "错误: 没有下载到任何文件"
             exit 1
           fi
+          
+          echo "找到 $exe_count 个 .exe 文件和 $deb_count 个 .deb 文件"
       
       - name: 创建 Release
         id: create_release
@@ -75,8 +81,8 @@ jobs:
             ---
             此 Release 由 GitHub Actions 自动创建
           files: |
-            downloads/kiro-windows-x64.exe
-            downloads/kiro-linux-debian-ubuntu.deb
+            downloads/*.exe
+            downloads/*.deb
           draft: false
           prerelease: false
         env:
