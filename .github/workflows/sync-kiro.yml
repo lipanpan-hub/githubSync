@@ -1,0 +1,101 @@
+name: Sync Kiro Release
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 每天 UTC 02:00 执行
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  sync-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest Kiro version
+        id: get_version
+        run: |
+          # 从 kiro.dev 下载页面获取最新版本号
+          VERSION=$(curl -s https://kiro.dev/downloads/ | grep -oP 'Latest\K[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          
+          if [ -z "$VERSION" ]; then
+            echo "无法获取版本号"
+            exit 1
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "最新版本: $VERSION"
+
+      - name: Check if release exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          
+          if gh release view "v$VERSION" &>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release v$VERSION 已存在"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Release v$VERSION 不存在"
+          fi
+
+      - name: Download Kiro installers
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          mkdir -p downloads
+          
+          # 下载 Windows x64 版本
+          WINDOWS_URL="https://prod.download.desktop.kiro.dev/releases/stable/win32-x64/signed/${VERSION}/Kiro-Setup-${VERSION}.exe"
+          echo "下载 Windows x64 版本..."
+          if curl -fL -o "downloads/Kiro-${VERSION}-windows-x64.exe" "$WINDOWS_URL"; then
+            echo "Windows x64 下载成功"
+          else
+            echo "Windows x64 下载失败"
+          fi
+
+          # 下载 Linux Debian/Ubuntu 版本
+          LINUX_URL="https://prod.download.desktop.kiro.dev/releases/stable/linux-x64/deb/${VERSION}/kiro_${VERSION}_amd64.deb"
+          echo "下载 Linux Debian/Ubuntu 版本..."
+          if curl -fL -o "downloads/kiro_${VERSION}_amd64.deb" "$LINUX_URL"; then
+            echo "Linux deb 下载成功"
+          else
+            echo "Linux deb 下载失败"
+          fi
+
+      - name: Create GitHub Release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          
+          # 检查是否有文件下载成功
+          if [ ! "$(ls -A downloads)" ]; then
+            echo "没有文件下载成功，跳过创建 release"
+            exit 1
+          fi
+          
+          # 创建 release 并上传文件
+          gh release create "v$VERSION" \
+            --title "Kiro v$VERSION" \
+            --notes "Kiro v$VERSION
+
+自动同步自官方发布: https://kiro.dev/downloads/
+
+包含文件:
+- Windows x64 安装包
+- Linux (Debian/Ubuntu 24+) deb 包
+
+更多信息请访问: https://kiro.dev/changelog/" \
+            downloads/*
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf downloads
