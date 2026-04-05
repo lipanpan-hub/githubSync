@@ -28,7 +28,9 @@ jobs:
           npx playwright install-deps chromium
       
       - name: 运行下载脚本
-        run: npm run download
+        run: |
+          # 调用 download-kiro.js 脚本下载文件
+          node download-kiro.js
       
       - name: 获取当前日期和版本信息
         id: version
