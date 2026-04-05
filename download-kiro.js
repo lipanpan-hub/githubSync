@@ -73,12 +73,6 @@ async function main() {
     }
     console.log(`找到 Latest 版本: ${latestVersion}`);
     
-    // 确保 Latest 版本的折叠面板已展开
-    console.log('展开 Latest 版本折叠面板...');
-    const latestSection = page.locator(`text=/Latest/`).first();
-    await latestSection.click();
-    await page.waitForTimeout(1000);
-    
     // 在 Latest 版本区域内查找 Windows x64 下载按钮
     console.log('\n获取 Windows x64 下载链接...');
     try {
