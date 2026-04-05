@@ -1,0 +1,89 @@
+name: 定时下载 Kiro 并发布 Release
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 每天 UTC 时间 02:00 运行（北京时间 10:00）
+  workflow_dispatch:  # 允许手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  download-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: 安装依赖
+        run: |
+          npm install
+          npx playwright install chromium
+          npx playwright install-deps chromium
+      
+      - name: 运行下载脚本
+        run: npm run download
+      
+      - name: 获取当前日期和版本信息
+        id: version
+        run: |
+          echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "datetime=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+          
+          # 尝试从文件名或其他方式获取版本号
+          if [ -f downloads/kiro-windows-x64.exe ]; then
+            echo "windows_exists=true" >> $GITHUB_OUTPUT
+          fi
+          if [ -f downloads/kiro-linux-debian-ubuntu.deb ]; then
+            echo "linux_exists=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 检查文件是否存在
+        run: |
+          ls -lh downloads/
+          if [ ! -f downloads/kiro-windows-x64.exe ] && [ ! -f downloads/kiro-linux-debian-ubuntu.deb ]; then
+            echo "错误: 没有下载到任何文件"
+            exit 1
+          fi
+      
+      - name: 创建 Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: kiro-${{ steps.version.outputs.date }}
+          name: Kiro 镜像 ${{ steps.version.outputs.date }}
+          body: |
+            ## Kiro IDE 镜像下载
+            
+            自动同步时间: ${{ steps.version.outputs.datetime }} UTC
+            
+            ### 包含文件
+            - Windows x64 版本
+            - Linux Debian/Ubuntu 24+ 版本 (deb)
+            
+            ### 原始下载地址
+            https://kiro.dev/downloads/
+            
+            ---
+            此 Release 由 GitHub Actions 自动创建
+          files: |
+            downloads/kiro-windows-x64.exe
+            downloads/kiro-linux-debian-ubuntu.deb
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 清理旧的 Release
+        uses: dev-drprasad/delete-older-releases@v0.3.2
+        with:
+          keep_latest: 5
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

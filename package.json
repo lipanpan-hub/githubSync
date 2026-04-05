@@ -1,0 +1,16 @@
+{
+  "name": "kiro-downloader",
+  "version": "1.0.0",
+  "description": "自动下载 Kiro IDE 的 Windows 和 Linux 版本",
+  "main": "download-kiro.js",
+  "scripts": {
+    "download": "node download-kiro.js",
+    "install-playwright": "npx playwright install chromium"
+  },
+  "keywords": ["kiro", "download", "automation"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}
